@@ -14,6 +14,14 @@ fn count_lines(input: Vec<u8>) -> Result<u32, &'static str> {
     Ok(lines.len() as u32)
 }
 
+fn count_words(input: Vec<u8>) -> Result<u32, &'static str> {
+    let input = match str::from_utf8(&input) {
+        Ok(input) => input,
+        Err(_) => return Err("cannot convert input to string"),
+    };
+    let words: Vec<&str> = input.split_whitespace().collect();
+    Ok(words.len() as u32)
+}
 pub fn run() -> Result<u32, &'static str> {
     let config = match Config::build(env::args()) {
         Ok(config) => config,
@@ -33,6 +41,10 @@ pub fn run() -> Result<u32, &'static str> {
             Ok(number_of_lines) => Ok(number_of_lines),
             Err(e) => Err(e),
         },
+        "-w" => match count_words(file) {
+            Ok(number_of_words) => Ok(number_of_words),
+            Err(e) => Err(e),
+        },
         _ => Err("unknown option"),
     }
 }
@@ -50,6 +62,7 @@ impl Config {
             Some(arg) => match arg.as_str() {
                 "-c" => arg,
                 "-l" => arg,
+                "-w" => arg,
                 _ => return Err("unknown option"),
             },
             None => return Err("Not enough arguments"),
@@ -85,6 +98,17 @@ mod tests {
         let input = "hello \n, how are you\nfine".as_bytes().to_vec();
 
         match count_lines(input) {
+            Ok(got) => assert_eq!(want, got),
+            Err(_) => assert!(false, "should not fail"),
+        }
+    }
+
+    #[test]
+    fn test_count_words() {
+        let want: u32 = 4;
+        let input = "hello world\n this\n that".as_bytes().to_vec();
+
+        match count_words(input) {
             Ok(got) => assert_eq!(want, got),
             Err(_) => assert!(false, "should not fail"),
         }
@@ -133,6 +157,27 @@ mod tests {
             "-l".to_string(),
             "/hello/file.txt".to_string(),
         ];
+        let got = Config::build(input).unwrap_or_else(|_| {
+            assert!(false, "should not fail");
+            process::exit(1);
+        });
+
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn test_input_count_words_option() {
+        let want = Config {
+            file_path: "/hello/file.txt".to_string(),
+            option: "-w".to_string(),
+        };
+
+        let input: Vec<String> = vec![
+            "wcc".to_string(),
+            "-w".to_string(),
+            "/hello/file.txt".to_string(),
+        ];
+
         let got = Config::build(input).unwrap_or_else(|_| {
             assert!(false, "should not fail");
             process::exit(1);
