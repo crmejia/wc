@@ -1,7 +1,17 @@
+use core::str;
 use std::{env, fs, path::Path};
 
 fn count_bytes(input: Vec<u8>) -> u32 {
     input.len() as u32
+}
+
+fn count_lines(input: Vec<u8>) -> Result<u32, &'static str> {
+    let input = match str::from_utf8(&input) {
+        Ok(input) => input,
+        Err(_) => return Err("cannot convert input to string"),
+    };
+    let lines: Vec<&str> = input.lines().collect();
+    Ok(lines.len() as u32)
 }
 
 pub fn run() -> Result<u32, &'static str> {
@@ -19,6 +29,10 @@ pub fn run() -> Result<u32, &'static str> {
 
     match config.option.as_str() {
         "-c" => Ok(count_bytes(file)),
+        "-l" => match count_lines(file) {
+            Ok(number_of_lines) => Ok(number_of_lines),
+            Err(e) => Err(e),
+        },
         _ => Err("unknown option"),
     }
 }
@@ -33,13 +47,17 @@ impl Config {
         let mut args = input.into_iter();
         args.next(); //skipprogram name
         let option = match args.next() {
-            Some(arg) => arg,
-            None => return Err("didn't specify an option"),
+            Some(arg) => match arg.as_str() {
+                "-c" => arg,
+                "-l" => arg,
+                _ => return Err("unknown option"),
+            },
+            None => return Err("Not enough arguments"),
         };
 
         let file_path = match args.next() {
             Some(arg) => arg,
-            None => return Err("didn't get a file path"),
+            None => return Err("not enough arguments"),
         };
 
         Ok(Config { file_path, option })
@@ -62,7 +80,29 @@ mod tests {
     }
 
     #[test]
-    fn test_input_args() {
+    fn test_count_lines() {
+        let want: u32 = 3;
+        let input = "hello \n, how are you\nfine".as_bytes().to_vec();
+
+        match count_lines(input) {
+            Ok(got) => assert_eq!(want, got),
+            Err(_) => assert!(false, "should not fail"),
+        }
+    }
+    #[test]
+    fn test_input_wrong_option() {
+        let input: Vec<String> = vec![
+            "wcc".to_string(),
+            "-q".to_string(),
+            "/hello/file.txt".to_string(),
+        ];
+        match Config::build(input) {
+            Ok(_) => assert!(false, "should  fail"),
+            Err(_) => (),
+        };
+    }
+    #[test]
+    fn test_input_count_bytes_option() {
         let want = Config {
             file_path: "/hello/file.txt".to_string(),
             option: "-c".to_string(),
@@ -81,6 +121,25 @@ mod tests {
         assert_eq!(want, got);
     }
 
+    #[test]
+    fn test_input_count_line_option() {
+        let want = Config {
+            file_path: "/hello/file.txt".to_string(),
+            option: "-l".to_string(),
+        };
+
+        let input: Vec<String> = vec![
+            "wcc".to_string(),
+            "-l".to_string(),
+            "/hello/file.txt".to_string(),
+        ];
+        let got = Config::build(input).unwrap_or_else(|_| {
+            assert!(false, "should not fail");
+            process::exit(1);
+        });
+
+        assert_eq!(want, got);
+    }
     #[test]
     fn test_input_less_args() {
         let input: Vec<String> = vec!["wcc".to_string(), "-c".to_string()];
