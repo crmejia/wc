@@ -1,5 +1,5 @@
 use core::str;
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, str::Chars};
 
 fn count_bytes(input: Vec<u8>) -> u32 {
     input.len() as u32
@@ -21,6 +21,15 @@ fn count_words(input: Vec<u8>) -> Result<u32, &'static str> {
     };
     let words: Vec<&str> = input.split_whitespace().collect();
     Ok(words.len() as u32)
+}
+
+fn count_locale_chars(input: Vec<u8>) -> Result<u32, &'static str> {
+    let input = match str::from_utf8(&input) {
+        Ok(input) => input,
+        Err(_) => return Err("cannot convert input to string"),
+    };
+
+    Ok(input.chars().count() as u32)
 }
 pub fn run() -> Result<u32, &'static str> {
     let config = match Config::build(env::args()) {
@@ -45,6 +54,10 @@ pub fn run() -> Result<u32, &'static str> {
             Ok(number_of_words) => Ok(number_of_words),
             Err(e) => Err(e),
         },
+        "-m" => match count_locale_chars(file) {
+            Ok(number_of_chars) => Ok(number_of_chars),
+            Err(e) => Err(e),
+        },
         _ => Err("unknown option"),
     }
 }
@@ -63,6 +76,7 @@ impl Config {
                 "-c" => arg,
                 "-l" => arg,
                 "-w" => arg,
+                "-m" => arg,
                 _ => return Err("unknown option"),
             },
             None => return Err("Not enough arguments"),
@@ -98,6 +112,17 @@ mod tests {
         let input = "hello \n, how are you\nfine".as_bytes().to_vec();
 
         match count_lines(input) {
+            Ok(got) => assert_eq!(want, got),
+            Err(_) => assert!(false, "should not fail"),
+        }
+    }
+
+    #[test]
+    fn test_count_locale_chars() {
+        let want: u32 = 9;
+        let input = "hello\n123".as_bytes().to_vec();
+
+        match count_locale_chars(input) {
             Ok(got) => assert_eq!(want, got),
             Err(_) => assert!(false, "should not fail"),
         }
@@ -175,6 +200,27 @@ mod tests {
         let input: Vec<String> = vec![
             "wcc".to_string(),
             "-w".to_string(),
+            "/hello/file.txt".to_string(),
+        ];
+
+        let got = Config::build(input).unwrap_or_else(|_| {
+            assert!(false, "should not fail");
+            process::exit(1);
+        });
+
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn test_input_count_locale_chars_option() {
+        let want = Config {
+            file_path: "/hello/file.txt".to_string(),
+            option: "-m".to_string(),
+        };
+
+        let input: Vec<String> = vec![
+            "wcc".to_string(),
+            "-m".to_string(),
             "/hello/file.txt".to_string(),
         ];
 
