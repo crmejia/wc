@@ -1,5 +1,9 @@
 use core::str;
-use std::{env, fs, path::Path};
+use std::{
+    env, fs,
+    io::{self, Read},
+    path::Path,
+};
 
 fn count_bytes(input: Vec<u8>) -> u32 {
     input.len() as u32
@@ -31,49 +35,64 @@ fn count_locale_chars(input: Vec<u8>) -> Result<u32, &'static str> {
 
     Ok(input.chars().count() as u32)
 }
-pub fn run() -> Result<String, &'static str> {
-    //this is setup, not part of the run
-    let config = match Config::build(env::args().collect()) {
-        Ok(config) => config,
-        Err(e) => return Err(e),
-    };
 
-    //open file
-    //todo this could actually be injected as a Vec<u8> so it can be tested
-    let path = Path::new(config.file_path.as_str());
-    let file = match fs::read(path) {
-        Ok(file) => file,
-        Err(_) => return Err("couldn't open file"),
-    };
+pub struct Ccwc {
+    config: Config,
+    data: Vec<u8>,
+}
+impl Ccwc {
+    pub fn new() -> Result<Self, &'static str> {
+        let config = match Config::build(env::args().collect()) {
+            Ok(config) => config,
+            Err(e) => return Err(e),
+        };
 
-    match config.option.as_str() {
-        "-c" => Ok(format!("{}", count_bytes(file))),
-        "-l" => match count_lines(file) {
-            Ok(number_of_lines) => Ok(format!("{}", number_of_lines)),
-            Err(e) => Err(e),
-        },
-        "-w" => match count_words(file) {
-            Ok(number_of_words) => Ok(format!("{}", number_of_words)),
-            Err(e) => Err(e),
-        },
-        "-m" => match count_locale_chars(file) {
-            Ok(number_of_chars) => Ok(format!("{}", number_of_chars)),
-            Err(e) => Err(e),
-        },
-        "*" => {
-            //ineffiecient cloning thanks compiler
-            let lines = count_lines(file.clone()).unwrap();
-            let words = count_words(file.clone()).unwrap();
-            let filename = path.file_name().unwrap().to_str().unwrap();
-            Ok(format!(
-                "{} {} {} {}",
-                lines,
-                words,
-                count_bytes(file),
-                filename
-            ))
+        if config.file_path != "".to_string() {
+            //open file
+            let path = Path::new(config.file_path.as_str());
+            let data = match fs::read(path) {
+                Ok(file) => file,
+                Err(_) => return Err("couldn't open file"),
+            };
+            Ok(Ccwc { config, data })
+        } else {
+            let mut stdin = io::stdin();
+            let mut buffer = Vec::new();
+            match stdin.read_to_end(&mut buffer) {
+                Ok(_) => (),
+                Err(_) => return Err("cannot read stdin"),
+            }
+            Ok(Ccwc {
+                config,
+                data: buffer,
+            })
         }
-        _ => Err("unknown option"),
+    }
+
+    pub fn run(self) -> Result<String, &'static str> {
+        let output = match self.config.option.as_str() {
+            "-c" => format!("{}", count_bytes(self.data)),
+            "-l" => {
+                let number_of_lines = count_lines(self.data)?;
+                format!("{}", number_of_lines)
+            }
+            "-w" => {
+                let number_of_words = count_words(self.data)?;
+                format!("{}", number_of_words)
+            }
+            "-m" => {
+                let number_of_chars = count_locale_chars(self.data)?;
+                format!("{}", number_of_chars)
+            }
+            "*" => {
+                //ineffiecient cloning thanks compiler
+                let lines = count_lines(self.data.clone())?;
+                let words = count_words(self.data.clone())?;
+                format!("{} {} {}", lines, words, count_bytes(self.data))
+            }
+            _ => Err("unknown option")?,
+        };
+        Ok(format!("{output} {}", self.config.file_path))
     }
 }
 
@@ -83,36 +102,20 @@ pub struct Config {
     pub option: String,
 }
 impl Config {
-    // pub fn build(input: impl IntoIterator<Item = String>) -> Result<Config, &'static str> {
     pub fn build(args: Vec<String>) -> Result<Config, &'static str> {
-        // let mut args = input.into_iter();
-        // args.
-        // args.next(); //skipprogram name
-
-        // let option = match args.next() {
-        //     Some(arg) => match arg.as_str() {
-        //         "-c" => arg,
-        //         "-l" => arg,
-        //         "-w" => arg,
-        //         "-m" => arg,
-        //         _ => return Err("unknown option"),
-        //     },
-        //     None => return Err("Not enough arguments"),
-        // };
-
-        // let file_path = match args.next() {
-        //     Some(arg) => arg,
-        //     None => return Err("not enough arguments"),
-        // };
-
-        // Ok(Config { file_path, option })
         match args.len() {
-            1 => todo!(), //check stdin
+            1 => Ok(Config {
+                file_path: "".to_string(),
+                option: "*".to_string(),
+            }),
             2 => {
                 //check if its option or file name
                 let arg = args[1].clone();
                 if arg.starts_with("-") {
-                    todo!() //use option + stdin
+                    return Ok(Config {
+                        file_path: "".to_string(),
+                        option: arg,
+                    });
                 }
 
                 Ok(Config {
@@ -272,11 +275,16 @@ mod tests {
         assert_eq!(want, got);
     }
     #[test]
-    fn test_input_less_args() {
+    fn test_input_no_file_name() {
         let input: Vec<String> = vec!["wcc".to_string(), "-c".to_string()];
-        let _ = match Config::build(input) {
-            Ok(_) => assert!(false, "should fail"),
-            Err(_) => (),
+        let want = Config {
+            file_path: "".to_string(),
+            option: "-c".to_string(),
+        };
+
+        match Config::build(input) {
+            Ok(got) => assert_eq!(want, got),
+            Err(_) => assert!(false, "should not fail"),
         };
     }
 
@@ -293,5 +301,19 @@ mod tests {
             Ok(got) => assert_eq!(want, got),
             Err(_) => assert!(false, "should not fail"),
         }
+    }
+
+    #[test]
+    fn test_input_no_args() {
+        let input: Vec<String> = vec!["wcc".to_string()];
+        let want = Config {
+            file_path: "".to_string(),
+            option: "*".to_string(),
+        };
+
+        match Config::build(input) {
+            Ok(got) => assert_eq!(want, got),
+            Err(_) => assert!(false, "should not fail"),
+        };
     }
 }
