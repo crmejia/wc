@@ -9,36 +9,24 @@ fn count_bytes(input: Vec<u8>) -> u32 {
     input.len() as u32
 }
 
-fn count_lines(input: Vec<u8>) -> Result<u32, &'static str> {
-    let input = match str::from_utf8(&input) {
-        Ok(input) => input,
-        Err(_) => return Err("cannot convert input to string"),
-    };
+fn count_lines(input: &str) -> Result<u32, &'static str> {
     let lines: Vec<&str> = input.lines().collect();
     Ok(lines.len() as u32)
 }
 
-fn count_words(input: Vec<u8>) -> Result<u32, &'static str> {
-    let input = match str::from_utf8(&input) {
-        Ok(input) => input,
-        Err(_) => return Err("cannot convert input to string"),
-    };
+fn count_words(input: &str) -> Result<u32, &'static str> {
     let words: Vec<&str> = input.split_whitespace().collect();
     Ok(words.len() as u32)
 }
 
-fn count_locale_chars(input: Vec<u8>) -> Result<u32, &'static str> {
-    let input = match str::from_utf8(&input) {
-        Ok(input) => input,
-        Err(_) => return Err("cannot convert input to string"),
-    };
-
+fn count_locale_chars(input: &str) -> Result<u32, &'static str> {
     Ok(input.chars().count() as u32)
 }
 
 pub struct Ccwc {
     config: Config,
     data: Vec<u8>,
+    input_string: String,
 }
 impl Ccwc {
     pub fn new() -> Result<Self, &'static str> {
@@ -47,47 +35,56 @@ impl Ccwc {
             Err(e) => return Err(e),
         };
 
+        let mut data: Vec<u8> = Vec::new();
         if config.file_path != "".to_string() {
             //open file
             let path = Path::new(config.file_path.as_str());
-            let data = match fs::read(path) {
+            data = match fs::read(path) {
                 Ok(file) => file,
                 Err(_) => return Err("couldn't open file"),
             };
-            Ok(Ccwc { config, data })
+            // Ok(Ccwc { config, data })
         } else {
             let mut stdin = io::stdin();
-            let mut buffer = Vec::new();
-            match stdin.read_to_end(&mut buffer) {
+            // let mut buffer = Vec::new();
+            match stdin.read_to_end(&mut data) {
                 Ok(_) => (),
                 Err(_) => return Err("cannot read stdin"),
             }
-            Ok(Ccwc {
-                config,
-                data: buffer,
-            })
+            // Ok(Ccwc {
+            //     config,
+            //     data: buffer,
+            // })
         }
+        let input_string = match str::from_utf8(&data) {
+            Ok(input) => input.to_string(),
+            Err(_) => return Err("cannot convert input to string"),
+        };
+        Ok(Ccwc {
+            config,
+            data,
+            input_string,
+        })
     }
 
     pub fn run(self) -> Result<String, &'static str> {
         let output = match self.config.option.as_str() {
             "-c" => format!("{}", count_bytes(self.data)),
             "-l" => {
-                let number_of_lines = count_lines(self.data)?;
+                let number_of_lines = count_lines(&self.input_string)?;
                 format!("{}", number_of_lines)
             }
             "-w" => {
-                let number_of_words = count_words(self.data)?;
+                let number_of_words = count_words(&self.input_string)?;
                 format!("{}", number_of_words)
             }
             "-m" => {
-                let number_of_chars = count_locale_chars(self.data)?;
+                let number_of_chars = count_locale_chars(&self.input_string)?;
                 format!("{}", number_of_chars)
             }
             "*" => {
-                //ineffiecient cloning thanks compiler
-                let lines = count_lines(self.data.clone())?;
-                let words = count_words(self.data.clone())?;
+                let lines = count_lines(&self.input_string)?;
+                let words = count_words(&self.input_string)?;
                 format!("{} {} {}", lines, words, count_bytes(self.data))
             }
             _ => Err("unknown option")?,
@@ -150,7 +147,7 @@ mod tests {
     #[test]
     fn test_count_lines() {
         let want: u32 = 3;
-        let input = "hello \n, how are you\nfine".as_bytes().to_vec();
+        let input = "hello \n, how are you\nfine";
 
         match count_lines(input) {
             Ok(got) => assert_eq!(want, got),
@@ -161,7 +158,7 @@ mod tests {
     #[test]
     fn test_count_locale_chars() {
         let want: u32 = 9;
-        let input = "hello\n123".as_bytes().to_vec();
+        let input = "hello\n123";
 
         match count_locale_chars(input) {
             Ok(got) => assert_eq!(want, got),
@@ -172,7 +169,7 @@ mod tests {
     #[test]
     fn test_count_words() {
         let want: u32 = 4;
-        let input = "hello world\n this\n that".as_bytes().to_vec();
+        let input = "hello world\n this\n that";
 
         match count_words(input) {
             Ok(got) => assert_eq!(want, got),
