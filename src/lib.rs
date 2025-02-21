@@ -1,6 +1,6 @@
 use core::str;
 use std::{
-    env, fs,
+    env, error, fmt, fs,
     io::{self, Read},
     path::Path,
 };
@@ -30,32 +30,22 @@ pub struct Ccwc {
     input_string: String,
 }
 impl Ccwc {
-    pub fn new() -> Result<Self, &'static str> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let config = match Config::build(env::args().collect()) {
             Ok(config) => config,
-            Err(e) => return Err(e),
+            Err(e) => return Err(Box::new(e)),
         };
 
         let mut data: Vec<u8> = Vec::new();
         if config.file_path != "".to_string() {
             //open file
             let path = Path::new(config.file_path.as_str());
-            data = match fs::read(path) {
-                Ok(file) => file,
-                Err(_) => return Err("couldn't open file"),
-            };
+            data = fs::read(path)?;
         } else {
             let mut stdin = io::stdin();
-            // let mut buffer = Vec::new();
-            match stdin.read_to_end(&mut data) {
-                Ok(_) => (),
-                Err(_) => return Err("cannot read stdin"),
-            }
+            stdin.read_to_end(&mut data)?;
         }
-        let input_string = match str::from_utf8(&data) {
-            Ok(input) => input.to_string(),
-            Err(_) => return Err("cannot convert input to string"),
-        };
+        let input_string = str::from_utf8(&data)?.to_string();
         Ok(Ccwc {
             config,
             data,
@@ -63,7 +53,7 @@ impl Ccwc {
         })
     }
 
-    pub fn run(self) -> Result<String, &'static str> {
+    pub fn run(self) -> Result<String, UnknownOptionError> {
         let output = match self.config.option.as_str() {
             "-c" => format!("{}", count_bytes(self.data)),
             "-l" => {
@@ -83,7 +73,7 @@ impl Ccwc {
                 let words = count_words(&self.input_string);
                 format!("{} {} {}", lines, words, count_bytes(self.data))
             }
-            _ => Err("unknown option")?,
+            _ => return Err(UnknownOptionError),
         };
         Ok(format!("{output} {}", self.config.file_path))
     }
@@ -95,7 +85,7 @@ pub struct Config {
     pub option: String,
 }
 impl Config {
-    pub fn build(args: Vec<String>) -> Result<Config, &'static str> {
+    pub fn build(args: Vec<String>) -> Result<Config, TooManyArgumentsError> {
         match args.len() {
             1 => Ok(Config {
                 file_path: "".to_string(),
@@ -120,8 +110,28 @@ impl Config {
                 file_path: args[2].clone(),
                 option: args[1].clone(),
             }),
-            _ => return Err("too many arguments"),
+            _ => Err(TooManyArgumentsError),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TooManyArgumentsError;
+
+impl fmt::Display for TooManyArgumentsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "too many arguments")
+    }
+}
+
+impl error::Error for TooManyArgumentsError {}
+
+#[derive(Debug, Clone)]
+pub struct UnknownOptionError;
+
+impl fmt::Display for UnknownOptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "unknownOption")
     }
 }
 
